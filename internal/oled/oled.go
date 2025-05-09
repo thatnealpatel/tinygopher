@@ -1,62 +1,68 @@
 package oled
 
 import (
-	"fmt"
+	"errors"
+	"image/color"
 	"machine"
-	"sync"
 
+	"tinygo.org/x/drivers/i2csoft"
+	"tinygo.org/x/drivers/pixel"
 	"tinygo.org/x/drivers/ssd1306"
-)
+	"tinygo.org/x/tinyfont"
 
-const (
-	// (unclear) https://www.espressif.com/sites/default/files/documentation/0a-esp8266ex_datasheet_en.pdf
-	// Since it looks to me that datasheet indicates MTMS + GPIO2 should be used (in the I2C section);
-	// however, Pin4, Pin5 is correct: https://docs.micropython.org/en/latest/esp8266/tutorial/ssd1306.html
-	sdaPin = machine.GP4 // data/command
-	sclPin = machine.GP5 // reset
+	//"tinygo.org/x/tinyfont/gophers"
+	"tinygo.org/x/tinyfont/freemono"
 )
 
 var (
-	once    sync.Once
-	display *ssd1306.Device // technically NOT thread-safe
+	//once    sync.Once
+	display ssd1306.Device // technically NOT thread-safe
 )
 
 // SetupDisplay safely initializes a global display for use.
 func SetupDisplay() error {
-	i2c, err := setupI2C(sdaPin, sclPin)
+	i2c, err := setupI2C()
 	if err != nil {
 		return err
 	}
-	once.Do(func() {
-		display = &ssd1306.NewI2C(i2c)
-		display.Configure(ssd1306.Config{
-			Width:   128,
-			Height:  64,
-			Address: 0x3C, // default
-		})
-		display.ClearDisplay() // in-case of weird reboot
+	display = ssd1306.NewI2C(i2c)
+	display.Configure(ssd1306.Config{
+		Address: 0x3C, // default
+		Width:   128,
+		Height:  64,
 	})
+	display.ClearDisplay() // in-case of weird reboot
 
 	return nil
 }
 
-// Draw provides a semi-safe (if used as a singleton in TinyGo) drawing wrapper.
-func Draw(buf []byte) (err error) {
+func Text(x, y int16, msg string, size int) (err error) {
 	display.ClearDisplay()
-	err = display.SetBuffer(buf)
+	tinyfont.WriteLine(&display, &freemono.Oblique12pt7b, x, y, msg, color.RGBA{1, 1, 1, 1})
 	display.Display()
 	return
 }
 
+// Draw provides a semi-safe (if used as a singleton in TinyGo) drawing wrapper.
+func Draw(x, y int, buf []byte) (err error) {
+	display.ClearDisplay()
+	var ofx int16 = 0
+	if x != 128 {
+		ofx = 33 // "centers"
+	}
+	err = display.DrawBitmap(ofx, 0, pixel.NewImageFromBytes[pixel.Monochrome](x, y, buf))
+	if derr := display.Display(); derr != nil {
+		err = errors.New("two errors, draw(" + err.Error() + "), display(" + derr.Error() + ")")
+	}
+	return
+}
+
 // setupI2C defines a software I2C implementation over the ESP8266EX designated pins.
-func setupI2C(sda, scl machine.Pin) (*machine.I2C, error) {
-	c := machine.I2CConfig{
-		Frequency: machine.TWI_FREQ_100KHZ, // I2C on ESP8266EX supports up to 100 kHz
-		SDA:       sda,
-		SCL:       scl,
+func setupI2C() (*i2csoft.I2C, error) {
+	i2c := i2csoft.New(machine.SCL_PIN, machine.SDA_PIN) // scl, sda machine.Pin
+	c := i2csoft.I2CConfig{Frequency: 100_000, SCL: machine.SCL_PIN, SDA: machine.SDA_PIN}
+	if err := i2c.Configure(c); err != nil {
+		return nil, errors.New("cannot software i2c: " + err.Error())
 	}
-	if err := machine.I2C0.Configure(c); err != nil {
-		return nil, fmt.Errorf("cannot configure(%+v) software i2c: %v\n", c, err)
-	}
-	return machine.I2C0, nil
+	return i2c, nil
 }
