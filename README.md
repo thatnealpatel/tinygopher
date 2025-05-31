@@ -1,14 +1,14 @@
 # tinygopher
 
-Putting Go gophers on microcontrollers.
+Currently, a naive implementation exists for flashing
+a ESP8266EX with some text and a basic collection of Go
+gophers.
 
-## Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details.
+This repository is updated on a best-effort basis.
 
 ## License
 
-Apache 2.0; see [`LICENSE`](LICENSE) for details.
+See [`LICENSE`](LICENSE) for details.
 
 ## Disclaimer
 
